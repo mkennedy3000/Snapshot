@@ -11,7 +11,7 @@ int udp_listen(int sockfd, char * buf){
     int num_bytes;
 
     if((num_bytes = recvfrom(sockfd, buf, max_buf_len-1, 0, NULL, NULL)) == -1){
-        printf("listen failure\n");
+        //printf("listen failure\n");
         return -1;
     }
     buf[num_bytes] = '\0';
@@ -30,7 +30,7 @@ int udp_send(int sockfd, char * message, struct addrinfo * p){
     return num_bytes;
 }
 
-int set_up_talk(char * port, struct addrinfo *p){
+int set_up_talk(char * port, struct addrinfo **p){
     int sockfd;
     struct addrinfo hints, *servinfo;
     int rv;
@@ -44,20 +44,19 @@ int set_up_talk(char * port, struct addrinfo *p){
         return -1;
     }
 
-    for(p = servinfo; p != NULL; p = p->ai_next){
-        if((sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1){
+    for(*p = servinfo; *p != NULL; *p = (*p)->ai_next){
+        if((sockfd = socket((*p)->ai_family, (*p)->ai_socktype, (*p)->ai_protocol)) == -1){
             continue;
         }
         break;
     }
 
-    if(p == NULL){
+    if(*p == NULL){
         printf("setUpTalk failed to bind to socket\n");
         return -1;
     }
 
     freeaddrinfo(servinfo);
-
     return sockfd;
 }
 
@@ -78,9 +77,13 @@ int set_up_listen(char * port){
 
     for(p = servinfo; p != NULL; p = p->ai_next){
         if((sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1){
+            printf("socket failure\n");
             continue;
         }
         if(bind(sockfd, p->ai_addr, p->ai_addrlen) == -1){
+            printf("bind failure\n");
+            perror("bind");
+            close(sockfd);
             continue;
         }
         break;
@@ -92,7 +95,7 @@ int set_up_listen(char * port){
     }
 
     freeaddrinfo(servinfo);
-
+    fcntl(sockfd, F_SETFL, O_NONBLOCK);
     return sockfd;
 }
 

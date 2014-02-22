@@ -30,38 +30,47 @@ int main (int argc, const char* argv[])
 
     printf("process: %d snapshots: %d \n", num_processes, num_snapshots);
 
-	int pid = fork();
+    pid_t pid = fork();
 
     if(pid == -1){
         printf("fork() failure\n");
         return -1;
     }
     else if(pid == 0){   //child process
-        struct addrinfo *p = NULL;
-        int talkfd = set_up_talk("15000", p);
-        int listenfd = set_up_listen("15001");
-        char * buf = (char *)malloc(100 * sizeof(char));
+        struct addrinfo *p;
+        int talkfd = set_up_talk("19457", &p);
 
-        int num_bytes = udp_listen(listenfd, buf);
-
-        printf("Received %d bytes\n", num_bytes);
-        printf("%s\n", buf);
-
-        close(talkfd);
-        close(listenfd);
+        if(talkfd != -1){
+            int num_bytes = udp_send(talkfd, "Hello", p);
+            printf("Sent %d bytes\n", num_bytes);
+            close(talkfd);
+        }
+        else{
+            printf("bad talkfd\n");
+        }
+        
+        printf("child done\n");
+        fflush(stdout);
+        _exit(EXIT_SUCCESS);
     }
     else{   //parent process
-        struct addrinfo *p = NULL;
-        int talkfd = set_up_talk("15001", p);
-        int listenfd = set_up_listen("15000");
+        int listenfd = set_up_listen("19457");
+        char * buf = (char *)malloc(100 * sizeof(char));
 
-        int num_bytes = udp_send(talkfd, "Hello", p);
+        if(listenfd != -1){
+            int num_bytes = udp_listen(listenfd, buf);    
+            printf("Received: %d bytes\n", num_bytes);
+            printf("Received: %s\n", buf);
+            close(listenfd);
+        }
+        else{
+            printf("bad listenfd\n");
+        }
 
-        printf("Sent %d bytes\n", num_bytes);
-
-        close(talkfd);
-        close(listenfd);
+        printf("parent done\n");
+        fflush(stdout);
     }
+        
 
 
     //Fork off num processes
