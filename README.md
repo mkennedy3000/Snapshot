@@ -3,8 +3,8 @@ Snapshot
 
 CS425/ECE428 Distributed Systems, MP1
 
-Mark Kennedy
-Jordan Ebel
+ - Mark Kennedy
+ - Jordan Ebel
 
 To Do
 =====
@@ -14,6 +14,6 @@ To Do
 
 Change Log
 ==========
-2/19 : Initial project set up
-2/22 : Reorganized project.  Networking setup complete.  Fork and communication between 2 processes complete.
+ - 2/19 : Initial project set up
+ - 2/22 : Reorganized project.  Networking setup complete.  Fork and communication between 2 processes complete.
 
