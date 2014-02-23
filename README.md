@@ -17,4 +17,5 @@ Change Log
  - 2/19 : Initial project set up
  - 2/22 : Reorganized project.  Networking setup complete.  Fork and communication between 2 processes complete.
  - 2/22 : Fork variable amount of processes but pthreads don't work as expected in them. Shift to just using pthreads.
+ - 2/23 : Fixing pthread problem, will be up soon.
 
