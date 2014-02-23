@@ -8,7 +8,7 @@ OBJ = $(patsubst %,$(OBJ_DIR)/%,$(OBJS))
 all: run
 
 run: $(OBJ)
-	$(compiler) $^ -o $@
+	$(compiler) $^ -o $@ -pthread
 
 $(OBJ_DIR)/%.o : %.c networking.h
 	$(compiler) $(flags) -c $< -o $@

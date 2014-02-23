@@ -11,20 +11,47 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <pthread.h>
+#include <unistd.h>
 #include "networking.h"
 
 #define PORT 15457
 
-void run ( int id, int listenfd, int num_processes, int num_snapshots )
+//Global Variables for each process
+int id;
+int listenfd;
+int num_processes;
+int num_snapshots;
+
+pthread_mutex_t money_mutex = PTHREAD_MUTEX_INITIALIZER;
+int money = 100;
+pthread_mutex_t widget_mutex = PTHREAD_MUTEX_INITIALIZER;
+int widgets = 100;
+
+//Run by read threads
+void *read_messages ()
+{
+	printf("%d> In Read Thread\n", id);
+	return 0;
+}
+
+//Run by write threads
+void *write_messages ()
+{
+	printf("%d> In Write Thread\n", id);
+	return 0;
+}
+
+void run ()
 {
 	/*Test Code*/
-	int i;
+	//int i;
 	char message[15];
 	sprintf(message, "Hello from %d", id);
 
 	//Set Up Talking Socket Each Time
 	struct addrinfo *p;
-   	int talkfd = set_up_talk(PORT+1, &p);
+   	int talkfd = set_up_talk(PORT+id, &p);
 
     if(talkfd != -1){
         int num_bytes = udp_send(talkfd, message, p);
@@ -36,11 +63,11 @@ void run ( int id, int listenfd, int num_processes, int num_snapshots )
 	
     char * buf = (char *)malloc(100 * sizeof(char));
     if(listenfd != -1){
-		for(i=0; i<num_processes; i++){
+		//for(i=0; i<num_processes; i++){
             int num_bytes = udp_listen(listenfd, buf);    
             printf("%d> Received: %d bytes\n", id, num_bytes);
             printf("%d> Received: %s\n", id, buf);
-		}
+		//}
     }
     else{
         printf("%d> Bad listenfd\n", id);
@@ -50,14 +77,21 @@ void run ( int id, int listenfd, int num_processes, int num_snapshots )
 	/*End Test Code*/
 
 	//MP logic here
-	//Do something until num_snapshots have been taken
+	pthread_t read_thread, write_thread;
+
+	if (pthread_create(&read_thread, NULL, &read_messages, NULL)){
+		printf("%d> Read Thread error\n", id);
+	}
+	if (pthread_create(&write_thread, NULL, &write_messages, NULL)){
+		printf("%d> Write Thread error\n", id);
+	}
+
+	pthread_join(read_thread, NULL);
+	pthread_join(write_thread, NULL);
 }
 
 int main (int argc, const char* argv[])
 {
-
-    int num_processes = 0;
-    int num_snapshots = 0;
 	int i = 0;
 
 	if (argc != 3){
@@ -72,21 +106,25 @@ int main (int argc, const char* argv[])
     printf("processes: %d snapshots: %d \n", num_processes, num_snapshots);
 
 	//Setup Listening Sockets
-	int listenfd[num_processes];
+	int listenfds[num_processes];
 	for( i=0; i<num_processes; i++){
-		listenfd[i] = set_up_listen(PORT+i);
+		listenfds[i] = set_up_listen(PORT+i);
 	}
 
-	//Create Processes and Run Logic
+	//Create Processes and Run Program
 	for( i=num_processes-1; i>0; i-- ){
 		if( fork() == 0 ){
-			run(i, listenfd[i], num_processes, num_snapshots);
+			id = i;
+			listenfd = listenfds[i];
+			run();
 			_exit(EXIT_SUCCESS);
 		}
 	}
 	
 	//Process 0
-	run(0, listenfd[0], num_processes, num_snapshots);
+	id = 0;
+	listenfd = listenfds[0];
+	run();
         
     return 0;
 } 
