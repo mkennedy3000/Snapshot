@@ -30,6 +30,9 @@ int main (int argc, const char* argv[])
 
     printf("process: %d snapshots: %d \n", num_processes, num_snapshots);
 
+	//Set Up Listening Sockets
+	int listenfd = set_up_listen("15457");
+
     pid_t pid = fork();
 
     if(pid == -1){
@@ -54,8 +57,7 @@ int main (int argc, const char* argv[])
         _exit(EXIT_SUCCESS);
     }
     else{   //parent process
-        int listenfd = set_up_listen("15457");
-        char * buf = (char *)malloc(100 * sizeof(char));
+		char * buf = (char *)malloc(100 * sizeof(char));
 
         if(listenfd != -1){
             int num_bytes = udp_listen(listenfd, buf);    
