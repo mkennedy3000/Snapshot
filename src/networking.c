@@ -11,7 +11,8 @@ int udp_listen(int sockfd, char * buf){
     int num_bytes;
 
     if((num_bytes = recvfrom(sockfd, buf, max_buf_len-1, 0, NULL, NULL)) == -1){
-        //printf("listen failure\n");
+        printf("listen failure\n");
+        perror("listen");
         return -1;
     }
     buf[num_bytes] = '\0';
@@ -95,7 +96,7 @@ int set_up_listen(char * port){
     }
 
     freeaddrinfo(servinfo);
-    fcntl(sockfd, F_SETFL, O_NONBLOCK);
+    //fcntl(sockfd, F_SETFL, O_NONBLOCK);
     return sockfd;
 }
 
