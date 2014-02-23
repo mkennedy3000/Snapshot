@@ -31,10 +31,14 @@ int udp_send(int sockfd, char * message, struct addrinfo * p){
     return num_bytes;
 }
 
-int set_up_talk(char * port, struct addrinfo **p){
+int set_up_talk(int port_num, struct addrinfo **p){
     int sockfd;
     struct addrinfo hints, *servinfo;
     int rv;
+
+	char port[5];
+	sprintf(port, "%d", port_num);	
+	
 
     memset(&hints, 0, sizeof hints);
     hints.ai_family = AF_UNSPEC;
@@ -61,10 +65,13 @@ int set_up_talk(char * port, struct addrinfo **p){
     return sockfd;
 }
 
-int set_up_listen(char * port){
+int set_up_listen(int port_num){
     int sockfd;
     struct addrinfo hints, *servinfo, *p;
     int rv;
+
+	char port[5];
+	sprintf(port, "%d", port_num);
 
     memset(&hints, 0, sizeof hints);
     hints.ai_family = AF_UNSPEC;

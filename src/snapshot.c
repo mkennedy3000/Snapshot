@@ -13,11 +13,52 @@
 #include <stdlib.h>
 #include "networking.h"
 
+#define PORT 15457
+
+void run ( int id, int listenfd, int num_processes, int num_snapshots )
+{
+	/*Test Code*/
+	int i;
+	char message[15];
+	sprintf(message, "Hello from %d", id);
+
+	//Set Up Talking Socket Each Time
+	struct addrinfo *p;
+   	int talkfd = set_up_talk(PORT+1, &p);
+
+    if(talkfd != -1){
+        int num_bytes = udp_send(talkfd, message, p);
+        printf("%d> Sent %d bytes\n", id, num_bytes);
+    }
+    else{
+        printf("bad talkfd\n");
+    }
+	
+    char * buf = (char *)malloc(100 * sizeof(char));
+    if(listenfd != -1){
+		for(i=0; i<num_processes; i++){
+            int num_bytes = udp_listen(listenfd, buf);    
+            printf("%d> Received: %d bytes\n", id, num_bytes);
+            printf("%d> Received: %s\n", id, buf);
+		}
+    }
+    else{
+        printf("%d> Bad listenfd\n", id);
+    }
+	
+    printf("%d> Done\n", id);
+	/*End Test Code*/
+
+	//MP logic here
+	//Do something until num_snapshots have been taken
+}
+
 int main (int argc, const char* argv[])
 {
 
     int num_processes = 0;
     int num_snapshots = 0;
+	int i = 0;
 
 	if (argc != 3){
         printf("snapshot usage: num_processes num_snapshots\n");
@@ -28,63 +69,25 @@ int main (int argc, const char* argv[])
 		num_snapshots = atoi(argv[2]);
 	}
 
-    printf("process: %d snapshots: %d \n", num_processes, num_snapshots);
+    printf("processes: %d snapshots: %d \n", num_processes, num_snapshots);
 
-	//Set Up Listening Sockets
-	int listenfd = set_up_listen("15457");
+	//Setup Listening Sockets
+	int listenfd[num_processes];
+	for( i=0; i<num_processes; i++){
+		listenfd[i] = set_up_listen(PORT+i);
+	}
 
-    pid_t pid = fork();
-
-    if(pid == -1){
-        printf("fork() failure\n");
-        return -1;
-    }
-    else if(pid == 0){   //child process
-        struct addrinfo *p;
-        int talkfd = set_up_talk("15457", &p);
-
-        if(talkfd != -1){
-            int num_bytes = udp_send(talkfd, "Hello", p);
-            printf("Sent %d bytes\n", num_bytes);
-            close(talkfd);
-        }
-        else{
-            printf("bad talkfd\n");
-        }
-        
-        printf("child done\n");
-        fflush(stdout);
-        _exit(EXIT_SUCCESS);
-    }
-    else{   //parent process
-		char * buf = (char *)malloc(100 * sizeof(char));
-
-        if(listenfd != -1){
-            int num_bytes = udp_listen(listenfd, buf);    
-            printf("Received: %d bytes\n", num_bytes);
-            printf("Received: %s\n", buf);
-            close(listenfd);
-        }
-        else{
-            printf("bad listenfd\n");
-        }
-
-        printf("parent done\n");
-        fflush(stdout);
-    }
-        
-
-
-    //Fork off num processes
-	// for ( 0 - num processes), fork(), give child id and 100/numprocesses money/widgets
-
-	//Network Setup
+	//Create Processes and Run Logic
+	for( i=num_processes-1; i>0; i-- ){
+		if( fork() == 0 ){
+			run(i, listenfd[i], num_processes, num_snapshots);
+			_exit(EXIT_SUCCESS);
+		}
+	}
 	
-	//Receiving Thread | Processing thread setup | Snapshot initializing thread id = 0
-
-	//Message Passing with Logic
-
-
+	//Process 0
+	run(0, listenfd[0], num_processes, num_snapshots);
+        
     return 0;
 } 
 

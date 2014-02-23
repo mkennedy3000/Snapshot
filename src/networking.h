@@ -14,6 +14,6 @@
 
 int udp_listen(int sockfd, char * buf);
 int udp_send(int sockfd, char * message, struct addrinfo * p);
-int set_up_talk(char * port, struct addrinfo **p);
-int set_up_listen(char * port);
+int set_up_talk(int port_num, struct addrinfo **p);
+int set_up_listen(int port_num);
 
