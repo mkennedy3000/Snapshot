@@ -59,10 +59,11 @@ void *take_snapshots ()
 		{
 			struct addrinfo *p;
 		   	int talkfd;
-			talkfd = set_up_talk(PORT+i, &p);
+			talkfd = set_up_talk(PORT+j, &p);
 
    	   		int num_bytes = udp_send(talkfd, marker, p);
-   	    	printf("%d> Marker Sent %d bytes\n", id, num_bytes);
+   	    	if (num_bytes <= 0)
+				printf("Error: Marker\n");
     	}
 
 	}
