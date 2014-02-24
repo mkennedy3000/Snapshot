@@ -18,11 +18,11 @@
 
 #define PORT 15457
 
-//--- Message Format ---//
+//--- Message Format --------------------------------------------------------------------------------------------------//
 //
-// lamport_from, lamport, #widgets_given, #money_given
+// from:lamport:#widgets_given:#money_given:vector_timestamp<0>:vector_timestamp<1>:...:vector_timestamp<num_processes-1>
 //
-//----------------------//
+//--------------------------------------------------------------------------------------------------------------------//
 
 //Global Variables for each process
 int id;
@@ -37,6 +37,8 @@ int widgets = 100;
 
 pthread_mutex_t lamport_mutex = PTHREAD_MUTEX_INITIALIZER;
 int lamport = 0;
+pthread_mutex_t vector_mutex = PTHREAD_MUTEX_INITIALIZER;
+int *vector;
 
 //Run by read threads
 void *read_messages ()
@@ -47,30 +49,52 @@ void *read_messages ()
 		int num_bytes = udp_listen(listenfd, buf);
 
 		if (num_bytes > 0){	//Change num_bytes with message size	
-			int l = buf[0];
-			int from = buf[1] -1;
+			int from = buf[0] -1;
+			int l = buf[1] -1;
 			int w = buf[2] -1;
 			int m = buf[3] -1;
+
+			int i;
+			int v[num_processes];
+			for( i=4; i<num_processes+4; i++){
+				v[i-4] = buf[i] -1;
+			}
 		
-			//Update invariants
+			/*Update invariants*/
 			pthread_mutex_lock(&money_mutex);
 			pthread_mutex_lock(&widget_mutex);
 			pthread_mutex_lock(&lamport_mutex);
+			pthread_mutex_lock(&vector_mutex);
 
 			widgets += w;
 			money += m;
 
-			if (l < lamport)
+			
+			if (l < lamport) //lamport update
 				lamport++;
 			else
 				lamport = l + 1;
 
-			printf("%d> L:%d Received: %d widgets and $%d from %d\n", id, lamport, w, m, from);
+			for( i=0; i<num_processes; i++){ //vector timestamp update
+				if(i == id)
+					vector[i]++;
+				else if(vector[i] < v[i])
+					vector[i] = v[i];
+			}
+
+			printf("%d> L:%d <", id, lamport);
+			for( i=0; i<num_processes; i++){
+				printf("%d", vector[i]);
+				if( i < num_processes-1 )
+					printf(",");
+			}
+			printf("> Received: %d widgets and $%d from %d\n", w, m, from);
 			printf("%d> Widgets:%d Money:$%d\n", id, widgets, money);
 
 			pthread_mutex_unlock(&money_mutex);
 			pthread_mutex_unlock(&widget_mutex);
 			pthread_mutex_unlock(&lamport_mutex);
+			pthread_mutex_unlock(&vector_mutex);
 		}
 	}
 	return 0;
@@ -84,22 +108,30 @@ void *write_messages ()
 		pthread_mutex_lock(&money_mutex);
 		pthread_mutex_lock(&widget_mutex);
 		pthread_mutex_lock(&lamport_mutex);
+		pthread_mutex_lock(&vector_mutex);
 
 		int w = 10;
 		int m = 20;
 
 		char message[4];
-		message[0] = lamport+1;
-		message[1] = id+1; //can't send 0 it is NULL
+		message[0] = id+1; //can't send 0 it is NULL
+		message[1] = lamport+1;
 		message[2] = w+1;
 		message[3] = m+1;
+		int i;
+		for( i=4; i<num_processes+4; i++){
+			if( i-4 == id )
+				vector[i-4]++;
+			message[i] = vector[i-4] +1;
+		}
 
 		widgets -= w;
 		money -= m;
 		lamport++;
 
+		int sendto = 1;
 		struct addrinfo *p;
-   		int talkfd = set_up_talk(PORT+1, &p);
+   		int talkfd = set_up_talk(PORT+sendto, &p);
 		if(talkfd != -1){
    	    	int num_bytes = udp_send(talkfd, message, p);
    	    	printf("%d> Sent %d bytes\n", id, num_bytes);
@@ -108,13 +140,19 @@ void *write_messages ()
      	   printf("bad talkfd\n");
     	}
 
-		printf("%d> L:%d Sent: %d widgets and $%d to %d\n", id, lamport, w, m, 1);
+		printf("%d> L:%d <", id, lamport);
+		for( i=0; i<num_processes; i++){
+			printf("%d", vector[i]);
+			if( i < num_processes-1 )
+				printf(",");
+		}
+		printf("> Sent: %d widgets and $%d to %d\n", w, m, sendto);
 		printf("%d> Widgets:%d Money:$%d\n", id, widgets, money);
 
 		pthread_mutex_unlock(&money_mutex);
 		pthread_mutex_unlock(&widget_mutex);
 		pthread_mutex_unlock(&lamport_mutex);
-
+		pthread_mutex_unlock(&vector_mutex);
 	}
 
 	return 0;
@@ -156,6 +194,12 @@ int main (int argc, const char* argv[])
 	int listenfds[num_processes];
 	for( i=0; i<num_processes; i++){
 		listenfds[i] = set_up_listen(PORT+i);
+	}
+
+	//Allocate and Initialize Vector Timestamp
+	vector = (int *)malloc(num_processes * sizeof(int));
+	for( i=0; i<num_processes; i++){
+		vector[i] = 0;
 	}
 
 	//Create Processes and Run Program
