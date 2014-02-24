@@ -22,6 +22,7 @@
 //
 // from:lamport:#widgets_given:#money_given:vector_timestamp<0>:vector_timestamp<1>:...:vector_timestamp<num_processes-1>
 //
+// Message is a marker if from is 125 or '}'
 //--------------------------------------------------------------------------------------------------------------------//
 
 //Global Variables for each process
@@ -40,61 +41,99 @@ int lamport = 0;
 pthread_mutex_t vector_mutex = PTHREAD_MUTEX_INITIALIZER;
 int *vector;
 
+
+//Take num_snapshots Snapshots
+void *take_snapshots ()
+{
+	int i,j;
+
+	char *marker = "}";
+
+	int snaps = num_snapshots;
+	for( i=0; i<snaps; i++)
+	{
+		//Take Snapshot Every 5 seconds		
+		sleep(5);
+
+		for( j=0; j<num_processes; j++)
+		{
+			struct addrinfo *p;
+		   	int talkfd;
+			talkfd = set_up_talk(PORT+i, &p);
+
+   	   		int num_bytes = udp_send(talkfd, marker, p);
+   	    	printf("%d> Marker Sent %d bytes\n", id, num_bytes);
+    	}
+
+	}
+
+	return 0;
+}
+
 //Run by read threads
 void *read_messages ()
 {
-	//TEST: Read forever
+	//Read until all snapshots have been recorded
 	char * buf = (char *)malloc(100 * sizeof(char));
-	while(1){
+	while(num_snapshots > 0){
 		int num_bytes = udp_listen(listenfd, buf);
 
-		if (num_bytes > 0){	//Change num_bytes with message size	
-			int from = buf[0] -1;
-			int l = buf[1] -1;
-			int w = buf[2] -1;
-			int m = buf[3] -1;
+		if (num_bytes > 0){	
 
-			int i;
-			int v[num_processes];
-			for( i=4; i<num_processes+4; i++){
-				v[i-4] = buf[i] -1;
+			//Check if marker
+			if (buf[0] == '}'){
+				//RECORD SNAPSHOT (maye add a separate function)
+				printf("%d> Take Snapshot\n", id);
+				num_snapshots--;
 			}
-		
-			/*Update invariants*/
-			pthread_mutex_lock(&money_mutex);
-			pthread_mutex_lock(&widget_mutex);
-			pthread_mutex_lock(&lamport_mutex);
-			pthread_mutex_lock(&vector_mutex);
+			else{
+				int from = buf[0] -1;
+				int l = buf[1] -1;
+				int w = buf[2] -1;
+				int m = buf[3] -1;
 
-			widgets += w;
-			money += m;
+				int i;
+				int v[num_processes];
+				for( i=4; i<num_processes+4; i++){
+					v[i-4] = buf[i] -1;
+				}
+		
+				/*Update invariants*/
+				pthread_mutex_lock(&money_mutex);
+				pthread_mutex_lock(&widget_mutex);
+				pthread_mutex_lock(&lamport_mutex);
+				pthread_mutex_lock(&vector_mutex);
+
+				widgets += w;
+				money += m;
 
 			
-			if (l < lamport) //lamport update
-				lamport++;
-			else
-				lamport = l + 1;
+				if (l < lamport) //lamport update
+					lamport++;
+				else
+					lamport = l + 1;
 
-			for( i=0; i<num_processes; i++){ //vector timestamp update
-				if(i == id)
-					vector[i]++;
-				else if(vector[i] < v[i])
-					vector[i] = v[i];
+				for( i=0; i<num_processes; i++){ //vector timestamp update
+					if(i == id)
+						vector[i]++;
+					else if(vector[i] < v[i])
+						vector[i] = v[i];
+				}
+
+				printf("%d> L:%d <", id, lamport);
+				for( i=0; i<num_processes; i++){
+					printf("%d", vector[i]);
+					if( i < num_processes-1 )
+						printf(",");
+				}
+				printf("> Received: %d widgets and $%d from %d\n", w, m, from);
+				printf("%d> Widgets:%d Money:$%d\n", id, widgets, money);
+
+				pthread_mutex_unlock(&money_mutex);
+				pthread_mutex_unlock(&widget_mutex);
+				pthread_mutex_unlock(&lamport_mutex);
+				pthread_mutex_unlock(&vector_mutex);
 			}
-
-			printf("%d> L:%d <", id, lamport);
-			for( i=0; i<num_processes; i++){
-				printf("%d", vector[i]);
-				if( i < num_processes-1 )
-					printf(",");
-			}
-			printf("> Received: %d widgets and $%d from %d\n", w, m, from);
-			printf("%d> Widgets:%d Money:$%d\n", id, widgets, money);
-
-			pthread_mutex_unlock(&money_mutex);
-			pthread_mutex_unlock(&widget_mutex);
-			pthread_mutex_unlock(&lamport_mutex);
-			pthread_mutex_unlock(&vector_mutex);
 		}
 	}
 	return 0;
@@ -104,7 +143,7 @@ void *read_messages ()
 void *write_messages ()
 {
 	//TEST: Send 10 Widgets and $20 to Process 1 from *
-	if (id != 1){	
+	if (id != 2){	
 		pthread_mutex_lock(&money_mutex);
 		pthread_mutex_lock(&widget_mutex);
 		pthread_mutex_lock(&lamport_mutex);
@@ -129,7 +168,7 @@ void *write_messages ()
 		money -= m;
 		lamport++;
 
-		int sendto = 1;
+		int sendto = 2;
 		struct addrinfo *p;
    		int talkfd = set_up_talk(PORT+sendto, &p);
 		if(talkfd != -1){
@@ -154,14 +193,14 @@ void *write_messages ()
 		pthread_mutex_unlock(&lamport_mutex);
 		pthread_mutex_unlock(&vector_mutex);
 	}
-
+	
 	return 0;
 }
 
 //What every process runs
 void run ()
 {
-	//MP logic here
+	// Create Read/Write Threads
 	pthread_t read_thread, write_thread;
 
 	if (pthread_create(&read_thread, NULL, &read_messages, NULL)){
@@ -169,6 +208,16 @@ void run ()
 	}
 	if (pthread_create(&write_thread, NULL, &write_messages, NULL)){
 		printf("%d> Write Thread error\n", id);
+	}
+
+	// Make Snapshot Marker Thread for Process 0
+	if (id == 0)
+	{
+		pthread_t marker_thread;
+		if (pthread_create(&marker_thread, NULL, &take_snapshots, NULL)){
+			printf("%d> Marker Thread error\n", id);
+		}
+		pthread_join(marker_thread, NULL);
 	}
 
 	pthread_join(read_thread, NULL);
