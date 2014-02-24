@@ -12,6 +12,7 @@ To Do
  - File I/O
  - Random sending of money and widgets
  - Message Passing Queues (send a message every x seconds)
+ - Search All utility
 
 Change Log
 ==========
@@ -23,4 +24,5 @@ Change Log
  - 2/23 : Added clear_ports.sh, a script that opens up all ports if not binding correctly.
  - 2/23 : Read and Write threads working with Lamport timestamps and valid invariant passing
  - 2/24 : Vector timestamps implemented
+ - 2/24 : Snapshot Markers sent ever 5 seconds
 
