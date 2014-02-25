@@ -8,11 +8,10 @@ CS425/ECE428 Distributed Systems, MP1
 
 To Do
 =====
- - Implement Snapshots
- - File I/O
+ - Implement Snapshots (Record current state and all channels being processed)
+ - File I/O (output correct data to files)
  - Random sending of money and widgets
- - Message Passing Queues (send a message every x seconds)
- - Search All utility
+ - Search All utility (possibly in python?)
 
 Change Log
 ==========
@@ -25,4 +24,5 @@ Change Log
  - 2/23 : Read and Write threads working with Lamport timestamps and valid invariant passing
  - 2/24 : Vector timestamps implemented
  - 2/24 : Snapshot Markers sent ever 5 seconds
+ - 2/24 : Messages are now put in virtual queues and processed 1 second after being received
 
