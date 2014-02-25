@@ -25,6 +25,11 @@
 // Message is a marker if from is 125 or '}'
 //--------------------------------------------------------------------------------------------------------------------//
 
+//--- Delays ---//
+#define MARKER_DELAY 5
+#define MESSAGE_DELAY 2
+#define CHANNEL_DELAY 1
+
 //Global Variables for each process
 int id;
 int listenfd;
@@ -41,6 +46,15 @@ int lamport = 0;
 pthread_mutex_t vector_mutex = PTHREAD_MUTEX_INITIALIZER;
 int *vector;
 
+//Message Channels
+pthread_mutex_t channel_mutex = PTHREAD_MUTEX_INITIALIZER;
+char **channel;
+
+
+//Records Snapshots
+void record_snapshot () {
+
+}
 
 //Take num_snapshots Snapshots
 void *take_snapshots ()
@@ -53,7 +67,7 @@ void *take_snapshots ()
 	for( i=0; i<snaps; i++)
 	{
 		//Take Snapshot Every 5 seconds		
-		sleep(5);
+		sleep(MARKER_DELAY);
 
 		for( j=0; j<num_processes; j++)
 		{
@@ -71,10 +85,19 @@ void *take_snapshots ()
 	return 0;
 }
 
+//Process Received Messages
+void *process_message (void *ptr)
+{
+	char *buf = (char *)ptr;
+	printf("Processig from: %d\n",(buf[0]-1));
+	sleep(CHANNEL_DELAY);
+	return 0;
+}
+
 //Run by read threads
 void *read_messages ()
 {
-	//Read until all snapshots have been recorded
+	//Continue receiving messages until all snapshots have been recorded
 	char * buf = (char *)malloc(100 * sizeof(char));
 	while(num_snapshots > 0){
 		int num_bytes = udp_listen(listenfd, buf);
@@ -83,12 +106,24 @@ void *read_messages ()
 
 			//Check if marker
 			if (buf[0] == '}'){
-				//RECORD SNAPSHOT (maye add a separate function)
 				printf("%d> Take Snapshot\n", id);
+				record_snapshot();
 				num_snapshots--;
 			}
 			else{
+				//Put message into channel to process
 				int from = buf[0] -1;
+				pthread_mutex_lock(&channel_mutex);
+				strcpy(channel[from], buf);
+				pthread_mutex_unlock(&channel_mutex);
+				
+				//Create a thread to process message when ready
+				pthread_t process_thread;
+				if (pthread_create(&process_thread, NULL, &process_message, (void *)channel[from])){
+					printf("%d> Process Thread error\n", id);
+				}
+				//pthread_join(process_thread, NULL);
+	
 				int l = buf[1] -1;
 				int w = buf[2] -1;
 				int m = buf[3] -1;
@@ -137,6 +172,7 @@ void *read_messages ()
 			}
 		}
 	}
+	free(buf);
 	return 0;
 }
 
@@ -144,7 +180,8 @@ void *read_messages ()
 void *write_messages ()
 {
 	//TEST: Send 10 Widgets and $20 to Process 1 from *
-	if (id != 2){	
+	while (num_snapshots > 0){	
+		sleep(2);
 		pthread_mutex_lock(&money_mutex);
 		pthread_mutex_lock(&widget_mutex);
 		pthread_mutex_lock(&lamport_mutex);
@@ -246,10 +283,18 @@ int main (int argc, const char* argv[])
 		listenfds[i] = set_up_listen(PORT+i);
 	}
 
-	//Allocate and Initialize Vector Timestamp
+	//Allocate and Initialize Vector Timestamps to <0,0,...>
 	vector = (int *)malloc(num_processes * sizeof(int));
 	for( i=0; i<num_processes; i++){
 		vector[i] = 0;
+	}
+
+	//Allocate Message Channel Processing Queues
+		//Messages are processed faster than they are sent, so only need
+		//1 message receiving channel per process
+	channel = (char **)malloc(num_processes * sizeof(int));
+	for( i=0; i<num_processes; i++ ){
+		channel[i] = (char *)malloc(100 * sizeof(char));
 	}
 
 	//Create Processes and Run Program
