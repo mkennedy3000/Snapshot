@@ -39,6 +39,7 @@ int num_processes;
 int num_snapshots;
 int total_snapshots;
 FILE * snapshot_file;
+int seed;
 
 pthread_mutex_t money_mutex = PTHREAD_MUTEX_INITIALIZER;
 int money = 100;
@@ -199,13 +200,12 @@ void *read_messages ()
 //Run by write threads
 void *write_messages ()
 {
-	//TODO: Send random amount of widgets/money to random process ever MESSAGE_DELAY
-	//TEST: Send 10 Widgets and $20 to Process 1 from *
 	while (num_snapshots > 0){	
         lock();
 
-		int w = 10;
-		int m = 20;
+		int w = rand() % widgets + 1;
+		int m = rand() % money + 1;
+		int sendto = rand() % num_processes;
 
 		char message[4];
 		message[0] = id+1; //can't send 0 it is NULL
@@ -223,12 +223,12 @@ void *write_messages ()
 		money -= m;
 		lamport++;
 
-		int sendto = 2;
 		struct addrinfo *p;
    		int talkfd = set_up_talk(PORT+sendto, &p);
 		if(talkfd != -1){
-   	    	int num_bytes = udp_send(talkfd, message, p);
-   	    	if(VERBOSE) printf("%d> Sent %d bytes\n", id, num_bytes);
+   	    	udp_send(talkfd, message, p);
+   	    	//int num_bytes = udp_send(talkfd, message, p);
+   	    	//if(VERBOSE) printf("%d> Sent %d bytes\n", id, num_bytes);
     	}
     	else{
      	   printf("bad talkfd\n");
@@ -275,15 +275,18 @@ int main (int argc, const char* argv[])
 {
 	int i = 0;
 
-	if (argc != 3){
-        printf("snapshot usage: num_processes num_snapshots\n");
+	if (argc != 4){
+        printf("snapshot usage: num_processes num_snapshots random_seed\n");
         return -1;
 	}
 	else{
 		num_processes = atoi(argv[1]);
 		num_snapshots = atoi(argv[2]);
         total_snapshots = num_snapshots;
+        seed = atoi(argv[3]);
 	}
+
+    srand(seed);
 
     if(VERBOSE) printf("processes: %d snapshots: %d \n", num_processes, num_snapshots);
 
@@ -332,7 +335,7 @@ int main (int argc, const char* argv[])
 		close(listenfds[i]);
         close_file(filefds[i]);
 	}
-        
+    
     return 0;
 } 
 
