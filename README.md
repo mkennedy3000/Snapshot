@@ -9,7 +9,6 @@ CS425/ECE428 Distributed Systems, MP1
 To Do
 =====
  - Random sending of money and widgets
- - Search All utility (possibly in python?)
  - Check for correctness
 
 Change Log
@@ -26,4 +25,5 @@ Change Log
  - 2/24 : Messages are now put in virtual queues and processed 1 second after being received
  - 2/27 : Updated Makefile to create directories when needed.  Currently imperfect solution (suppresses "Nothing to be done" messages) but works
  - 2/27 : Support for file input and output. Implemented snapshot recording.
+ - 2/27 : Added search-all script.  I think it fills the requirements but it might need to be changed (it is just grep repackaged...)
 
