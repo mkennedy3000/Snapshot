@@ -15,6 +15,7 @@
 #include <unistd.h>
 #include <string.h>
 #include "networking.h"
+#include "file_io.h"
 
 #define PORT 15457
 
@@ -29,12 +30,15 @@
 #define MARKER_DELAY 5  //Marker Send Rate
 #define MESSAGE_DELAY 2 //Message Send Rate
 #define CHANNEL_DELAY 1 //Message Processing Rate
+#define VERBOSE 1
 
 //Global Variables for each process
 int id;
 int listenfd;
 int num_processes;
 int num_snapshots;
+int total_snapshots;
+FILE * snapshot_file;
 
 pthread_mutex_t money_mutex = PTHREAD_MUTEX_INITIALIZER;
 int money = 100;
@@ -50,10 +54,39 @@ int *vector;
 pthread_mutex_t channel_mutex = PTHREAD_MUTEX_INITIALIZER;
 char **channel;
 
+void lock(){
+	pthread_mutex_lock(&money_mutex);
+	pthread_mutex_lock(&widget_mutex);
+	pthread_mutex_lock(&lamport_mutex);
+	pthread_mutex_lock(&vector_mutex);
+}
+
+void unlock(){
+	pthread_mutex_unlock(&money_mutex);
+	pthread_mutex_unlock(&widget_mutex);
+	pthread_mutex_unlock(&lamport_mutex);
+	pthread_mutex_unlock(&vector_mutex);
+}
+
+void print_status(int mode, int w, int m, int to_from){
+    if(VERBOSE){
+        int i;
+        printf("%d> L:%d <", id, lamport);
+        for( i=0; i<num_processes; i++){
+            printf("%d", vector[i]);
+            if( i < num_processes-1 ) printf(",");
+        }
+        if(mode==0) printf("> Received: %d widgets and $%d from %d | ", w, m, to_from);
+        if(mode==1) printf("> Sent: %d widgets and $%d to %d | ", w, m, to_from);
+        printf("Widgets:%d Money:$%d\n", widgets, money);
+    }
+}
 
 //Records Snapshots
 void record_snapshot () {
-	//Record current process's state (widgets,money,..etc) and incoming message channels
+    lock();
+    record_state(snapshot_file, id, total_snapshots-num_snapshots, lamport, vector, money, widgets, channel, num_processes);
+    unlock();
 }
 
 //Take num_snapshots Snapshots
@@ -74,10 +107,8 @@ void *take_snapshots ()
 			struct addrinfo *p;
 		   	int talkfd;
 			talkfd = set_up_talk(PORT+j, &p);
-
    	   		int num_bytes = udp_send(talkfd, marker, p);
-   	    	if (num_bytes <= 0)
-				printf("Error: Marker\n");
+   	    	if (num_bytes <= 0) printf("Error: Marker\n");
     	}
 
 	}
@@ -104,12 +135,9 @@ void *process_message (void *ptr)
 	}
 		
 	/*Update invariants*/
-	pthread_mutex_lock(&money_mutex);
-	pthread_mutex_lock(&widget_mutex);
-	pthread_mutex_lock(&lamport_mutex);
-	pthread_mutex_lock(&vector_mutex);
-
-	widgets += w;
+    lock();
+	
+    widgets += w;
 	money += m;
 
 	if (l < lamport) //lamport update
@@ -124,19 +152,8 @@ void *process_message (void *ptr)
 			vector[i] = v[i];
 	}
 
-	printf("%d> L:%d <", id, lamport);
-	for( i=0; i<num_processes; i++){
-		printf("%d", vector[i]);
-		if( i < num_processes-1 )
-			printf(",");
-	}
-	printf("> Received: %d widgets and $%d from %d\n", w, m, from);
-	printf("%d> Widgets:%d Money:$%d\n", id, widgets, money);
-
-	pthread_mutex_unlock(&money_mutex);
-	pthread_mutex_unlock(&widget_mutex);
-	pthread_mutex_unlock(&lamport_mutex);
-	pthread_mutex_unlock(&vector_mutex);
+    print_status(0, w, m, from);
+	unlock();
 
 	//Message Processed, Clear Channel
 	pthread_mutex_lock(&channel_mutex);
@@ -156,7 +173,7 @@ void *read_messages ()
 		if (num_bytes > 0){	
 			//Check if marker
 			if (buf[0] == '}'){
-				printf("%d> Taking Snapshot\n", id);
+				if(VERBOSE) printf("%d> Taking Snapshot\n", id);
 				record_snapshot();
 				num_snapshots--;
 			}
@@ -185,11 +202,7 @@ void *write_messages ()
 	//TODO: Send random amount of widgets/money to random process ever MESSAGE_DELAY
 	//TEST: Send 10 Widgets and $20 to Process 1 from *
 	while (num_snapshots > 0){	
-
-		pthread_mutex_lock(&money_mutex);
-		pthread_mutex_lock(&widget_mutex);
-		pthread_mutex_lock(&lamport_mutex);
-		pthread_mutex_lock(&vector_mutex);
+        lock();
 
 		int w = 10;
 		int m = 20;
@@ -215,25 +228,14 @@ void *write_messages ()
    		int talkfd = set_up_talk(PORT+sendto, &p);
 		if(talkfd != -1){
    	    	int num_bytes = udp_send(talkfd, message, p);
-   	    	printf("%d> Sent %d bytes\n", id, num_bytes);
+   	    	if(VERBOSE) printf("%d> Sent %d bytes\n", id, num_bytes);
     	}
     	else{
      	   printf("bad talkfd\n");
     	}
 
-		printf("%d> L:%d <", id, lamport);
-		for( i=0; i<num_processes; i++){
-			printf("%d", vector[i]);
-			if( i < num_processes-1 )
-				printf(",");
-		}
-		printf("> Sent: %d widgets and $%d to %d\n", w, m, sendto);
-		printf("%d> Widgets:%d Money:$%d\n", id, widgets, money);
-
-		pthread_mutex_unlock(&money_mutex);
-		pthread_mutex_unlock(&widget_mutex);
-		pthread_mutex_unlock(&lamport_mutex);
-		pthread_mutex_unlock(&vector_mutex);
+        print_status(1, w, m, sendto);
+        unlock();
 
 		//Wait until another message can be sent
 		sleep(MESSAGE_DELAY);
@@ -280,14 +282,17 @@ int main (int argc, const char* argv[])
 	else{
 		num_processes = atoi(argv[1]);
 		num_snapshots = atoi(argv[2]);
+        total_snapshots = num_snapshots;
 	}
 
-    printf("processes: %d snapshots: %d \n", num_processes, num_snapshots);
+    if(VERBOSE) printf("processes: %d snapshots: %d \n", num_processes, num_snapshots);
 
-	//Setup Listening Sockets
+	//Setup listening sockets and snapshot file descriptors
 	int listenfds[num_processes];
+    FILE * filefds[num_processes];
 	for( i=0; i<num_processes; i++){
 		listenfds[i] = set_up_listen(PORT+i);
+        filefds[i] = open_file(i);
 	}
 
 	//Allocate and Initialize Vector Timestamps to <0,0,...>
@@ -310,6 +315,7 @@ int main (int argc, const char* argv[])
 		if( fork() == 0 ){
 			id = i;
 			listenfd = listenfds[i];
+            snapshot_file = filefds[i];
 			run();
 			_exit(EXIT_SUCCESS);
 		}
@@ -318,11 +324,13 @@ int main (int argc, const char* argv[])
 	//Process 0
 	id = 0;
 	listenfd = listenfds[0];
+    snapshot_file = filefds[0];
 	run();
 
-	//Close Listening Sockets
+	//Close listening sockets and snapshot files
 	for( i=0; i<num_processes; i++){
 		close(listenfds[i]);
+        close_file(filefds[i]);
 	}
         
     return 0;

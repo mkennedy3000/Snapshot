@@ -3,15 +3,14 @@ Snapshot
 
 CS425/ECE428 Distributed Systems, MP1
 
- - Mark Kennedy
- - Jordan Ebel
+ - Mark Kennedy - kenned31
+ - Jordan Ebel  - ebel1
 
 To Do
 =====
- - Implement Snapshots (Record current state and all channels being processed)
- - File I/O (output correct data to files)
  - Random sending of money and widgets
  - Search All utility (possibly in python?)
+ - Check for correctness
 
 Change Log
 ==========
@@ -25,4 +24,6 @@ Change Log
  - 2/24 : Vector timestamps implemented
  - 2/24 : Snapshot Markers sent ever 5 seconds
  - 2/24 : Messages are now put in virtual queues and processed 1 second after being received
+ - 2/27 : Updated Makefile to create directories when needed.  Currently imperfect solution (suppresses "Nothing to be done" messages) but works
+ - 2/27 : Support for file input and output. Implemented snapshot recording.
 
