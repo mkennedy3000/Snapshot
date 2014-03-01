@@ -11,6 +11,8 @@ Compile: From within src/ directory, "make".  Also, "make clean".
 
 Run: ./run num_processes num_snapshots random_number_seed
 
+Search script: ./search-all snapshot_number
+
 Resulting log files are stored in the records/ directory.
 
 Information and Algorithm
