@@ -4,9 +4,6 @@
 
 #include "networking.h"
 
-#define localhost "127.0.0.1"
-#define max_buf_len 100
-
 int udp_listen(int sockfd, char * buf){
     int num_bytes;
 
@@ -15,20 +12,18 @@ int udp_listen(int sockfd, char * buf){
         perror("listen");
         return -1;
     }
-    buf[num_bytes] = '\0';
-    
-    return num_bytes;
+    buf[max_buf_len] = '\0';
+    return max_buf_len;  //num_bytes
 }
 
 int udp_send(int sockfd, char * message, struct addrinfo * p){
     int num_bytes;
 
-    if((num_bytes = sendto(sockfd, message, strlen(message), 0, p->ai_addr, p->ai_addrlen)) == -1){
+    if((num_bytes = sendto(sockfd, message, max_buf_len, 0, p->ai_addr, p->ai_addrlen)) == -1){
         printf("send failure\n");
         return -1;
     }
-
-    return num_bytes;
+    return max_buf_len; //num_bytes;
 }
 
 int set_up_talk(int port_num, struct addrinfo **p){
@@ -38,7 +33,6 @@ int set_up_talk(int port_num, struct addrinfo **p){
 
 	char port[5];
 	sprintf(port, "%d", port_num);	
-	
 
     memset(&hints, 0, sizeof hints);
     hints.ai_family = AF_UNSPEC;

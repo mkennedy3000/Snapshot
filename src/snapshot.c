@@ -94,7 +94,6 @@ void record_snapshot () {
 void *take_snapshots ()
 {
 	int i,j;
-
 	char *marker = "}";
 
 	int snaps = num_snapshots;
@@ -121,18 +120,17 @@ void *take_snapshots ()
 void *process_message (void *ptr)
 {
 	char *buf = (char *)ptr;
-	//printf("Processig from: %d\n",(buf[0]-1));
 	sleep(CHANNEL_DELAY);
 
-	int from = buf[0] -1;
-	int l = buf[1] -1;
-	int w = buf[2] -1;
-	int m = buf[3] -1;
+    int from = *((int *)buf) - 1;
+    int l    = *((int *)buf+1) - 1;
+    int w    = *((int *)buf+2) - 1;
+    int m    = *((int *)buf+3) - 1;
 
 	int i;
 	int v[num_processes];
 	for( i=4; i<num_processes+4; i++){
-		v[i-4] = buf[i] -1;
+        v[i-4] = *((int *)buf+i)-1;
 	}
 		
 	/*Update invariants*/
@@ -168,7 +166,7 @@ void *process_message (void *ptr)
 void *read_messages ()
 {
 	//Continue receiving messages until all snapshots have been recorded
-	char * buf = (char *)malloc(100 * sizeof(char));
+	char * buf = (char *)malloc(max_buf_len * sizeof(char));
 	while(num_snapshots > 0){
 		int num_bytes = udp_listen(listenfd, buf);
 		if (num_bytes > 0){	
@@ -182,7 +180,7 @@ void *read_messages ()
 				//Put message into channel to process
 				int from = buf[0] -1;
 				pthread_mutex_lock(&channel_mutex);
-				strcpy(channel[from], buf);
+				memcpy(channel[from], buf, max_buf_len);
 				pthread_mutex_unlock(&channel_mutex);
 				
 				//Create a thread to process message when ready
@@ -193,7 +191,7 @@ void *read_messages ()
 			}
 		}
 	}
-	free(buf);
+	//free(buf);
 	return 0;
 }
 
@@ -203,20 +201,21 @@ void *write_messages ()
 	while (num_snapshots > 0){	
         lock();
 
-		int w = rand() % widgets + 1;
-		int m = rand() % money + 1;
+		int w = widgets==0 ? 0 : rand() % widgets + 1;
+		int m = money==0 ? 0: rand() % money + 1;
 		int sendto = rand() % num_processes;
 
-		char message[4];
-		message[0] = id+1; //can't send 0 it is NULL
-		message[1] = lamport+1;
-		message[2] = w+1;
-		message[3] = m+1;
-		int i;
+        char message[max_buf_len];
+		*((int *)message)   = id+1; //can't send 0 it is NULL
+		*((int *)message+1) = lamport+1;
+		*((int *)message+2) = w+1;
+		*((int *)message+3) = m+1;
+        
+        int i;
 		for( i=4; i<num_processes+4; i++){
 			if( i-4 == id )
 				vector[i-4]++;
-			message[i] = vector[i-4] +1;
+            *((int *)message+i) = vector[i-4]+1;
 		}
 
 		widgets -= w;
@@ -227,8 +226,6 @@ void *write_messages ()
    		int talkfd = set_up_talk(PORT+sendto, &p);
 		if(talkfd != -1){
    	    	udp_send(talkfd, message, p);
-   	    	//int num_bytes = udp_send(talkfd, message, p);
-   	    	//if(VERBOSE) printf("%d> Sent %d bytes\n", id, num_bytes);
     	}
     	else{
      	   printf("bad talkfd\n");
@@ -286,8 +283,6 @@ int main (int argc, const char* argv[])
         seed = atoi(argv[3]);
 	}
 
-    srand(seed);
-
     if(VERBOSE) printf("processes: %d snapshots: %d \n", num_processes, num_snapshots);
 
 	//Setup listening sockets and snapshot file descriptors
@@ -307,9 +302,9 @@ int main (int argc, const char* argv[])
 	//Allocate Message Channel Processing Queues
 		//Messages are processed faster than they are sent, so only need
 		//1 message receiving channel per process
-	channel = (char **)malloc(num_processes * sizeof(int));
+	channel = (char **)malloc(num_processes * sizeof(char *));
 	for( i=0; i<num_processes; i++ ){
-		channel[i] = (char *)malloc(100 * sizeof(char));
+		channel[i] = (char *)malloc(max_buf_len * sizeof(char));
 		channel[i][0] = '\0';
 	}
 
@@ -317,6 +312,7 @@ int main (int argc, const char* argv[])
 	for( i=1; i<num_processes; i++ ){
 		if( fork() == 0 ){
 			id = i;
+            srand(seed+i);
 			listenfd = listenfds[i];
             snapshot_file = filefds[i];
 			run();
@@ -326,6 +322,7 @@ int main (int argc, const char* argv[])
 	
 	//Process 0
 	id = 0;
+    srand(seed);
 	listenfd = listenfds[0];
     snapshot_file = filefds[0];
 	run();

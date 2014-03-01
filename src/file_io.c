@@ -30,9 +30,10 @@ int record_channel(FILE * file, int process_id, int snapshot_id, int logical, in
         int i;
         for(i=0; i<num_processes; i++){
             if(channel[i][0] != '\0'){
-                int from = channel[i][0] - 1;
-                int w    = channel[i][2] - 1;
-                int m    = channel[i][3] - 1;
+                int * cur_chan = (int *)(channel[i]);
+                int from = *(cur_chan) - 1;
+                int w    = *(cur_chan+2) - 1;
+                int m    = *(cur_chan+3) - 1;
                 record_helper(file, process_id, snapshot_id, logical, vector, num_processes);
                 fprintf(file, "message %d to %d | money: %4d | widgets: %4d\n", from, process_id, m, w);
             }

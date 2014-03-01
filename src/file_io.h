@@ -2,6 +2,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include "networking.h"
 
 FILE * open_file(int process_id);
 void close_file(FILE * file);

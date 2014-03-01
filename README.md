@@ -8,8 +8,9 @@ CS425/ECE428 Distributed Systems, MP1
 
 To Do
 =====
- - Random sending of money and widgets
- - Check for correctness
+ - Check for correctness:
+    - Observed bug: Message from 1 to 2 can be sent after 1's snapshot but before 2's snapshot.  Result is message not recorded in 1's channel but 2's invariants already updated.  Looks like invariants lost.
+    - Otherwise looking correct
 
 Change Log
 ==========
@@ -26,4 +27,6 @@ Change Log
  - 2/27 : Updated Makefile to create directories when needed.  Currently imperfect solution (suppresses "Nothing to be done" messages) but works
  - 2/27 : Support for file input and output. Implemented snapshot recording.
  - 2/27 : Added search-all script.  I think it fills the requirements but it might need to be changed (it is just grep repackaged...)
+ - 2/28 : Randomized message contents and recipients
+ - 2/28 : Changed message format to support 4 bytes per number instead of 1 in messages (to solve overflow bug)
 

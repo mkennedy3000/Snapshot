@@ -12,6 +12,9 @@
 #include <netdb.h>
 #include <fcntl.h>
 
+#define localhost "127.0.0.1"
+#define max_buf_len 1000
+
 int udp_listen(int sockfd, char * buf);
 int udp_send(int sockfd, char * message, struct addrinfo * p);
 int set_up_talk(int port_num, struct addrinfo **p);
