@@ -18,6 +18,8 @@
 #include "file_io.h"
 
 #define PORT 15457
+#define YES 1
+#define NO 0
 
 //--- Message Format --------------------------------------------------------------------------------------------------//
 //
@@ -41,6 +43,8 @@ int total_snapshots;
 FILE * snapshot_file;
 int seed;
 
+int last_marker = -1;
+
 pthread_mutex_t money_mutex = PTHREAD_MUTEX_INITIALIZER;
 int money = 100;
 pthread_mutex_t widget_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -51,9 +55,16 @@ int lamport = 0;
 pthread_mutex_t vector_mutex = PTHREAD_MUTEX_INITIALIZER;
 int *vector;
 
+//Talk Lock
+pthread_mutex_t talk_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 //Virtual Message Channels
 pthread_mutex_t channel_mutex = PTHREAD_MUTEX_INITIALIZER;
 char **channel;
+int *c_recorded;
+
+//Channels that still need to be recorded
+int record_c[5];
 
 void lock(){
 	pthread_mutex_lock(&money_mutex);
@@ -84,17 +95,39 @@ void print_status(int mode, int w, int m, int to_from){
 }
 
 //Records Snapshots
-void record_snapshot () {
-    lock();
-    record_state(snapshot_file, id, total_snapshots-num_snapshots, lamport, vector, money, widgets, channel, num_processes);
-    unlock();
+void record_snapshot (int num, int respond) {
+    record_state(snapshot_file, id, num, lamport, vector, money, widgets, channel, c_recorded, num_processes, record_c);
+	
+	//Send out markers to other processes
+	int i;
+	char marker[max_buf_len];
+	marker[0] = '}';		//Marker
+	marker[1] = id + 1; 	//From
+	marker[2] = num + 1;	//Snapshot being recorded
+
+	if (respond == YES){
+	pthread_mutex_lock(&talk_mutex);
+	struct addrinfo *p;
+	for( i=0; i<num_processes; i++)
+	{
+		if ( i == id ) continue;
+		int talkfd = set_up_talk(PORT+i, &p);
+		if (talkfd != -1){
+			int num_bytes = 0;
+			while (num_bytes <= 0){
+   	 			num_bytes = udp_send(talkfd, marker, p);
+			}
+			close(talkfd);
+		}
+	}
+	pthread_mutex_unlock(&talk_mutex);
+	}
 }
 
-//Take num_snapshots Snapshots
+//Take num_snapshots Snapshots (send out markers from process 0)
 void *take_snapshots ()
 {
 	int i,j;
-	char *marker = "}";
 
 	int snaps = num_snapshots;
 	for( i=0; i<snaps; i++)
@@ -102,15 +135,16 @@ void *take_snapshots ()
 		//Take Snapshot Every 5 seconds		
 		sleep(MARKER_DELAY);
 
-		for( j=0; j<num_processes; j++)
-		{
-			struct addrinfo *p;
-		   	int talkfd;
-			talkfd = set_up_talk(PORT+j, &p);
-   	   		int num_bytes = udp_send(talkfd, marker, p);
-   	    	if (num_bytes <= 0) printf("Error: Marker\n");
-    	}
+		// Reset markers received
+		for( j=0; j<num_processes; j++){
+			record_c[j] = 1;
+		}
 
+		// Record own state and send out markers
+		if(VERBOSE) printf("%d> Taking Snapshot %d\n", id, i);
+		lock();
+		record_snapshot(i,YES);
+		unlock();
 	}
 
 	return 0;
@@ -157,6 +191,7 @@ void *process_message (void *ptr)
 	//Message Processed, Clear Channel
 	pthread_mutex_lock(&channel_mutex);
 	channel[from][0] = '\0'; //first byte to null signifies nothing in channel
+	c_recorded[from] = YES;
 	pthread_mutex_unlock(&channel_mutex);
 
 	return 0;
@@ -172,15 +207,44 @@ void *read_messages ()
 		if (num_bytes > 0){	
 			//Check if marker
 			if (buf[0] == '}'){
-				if(VERBOSE) printf("%d> Taking Snapshot\n", id);
-				record_snapshot();
-				num_snapshots--;
+				int from = buf[1] - 1;
+				int num = buf[2] -1;
+				if( id != 0 ) {  //Process 0 already took its snapshot
+					if (from == 0 /*&& last_marker != num*/){
+						if(VERBOSE) printf("%d> Taking Snapshot %d\n", id, num);
+						last_marker = num;
+						int i;
+						for (i=0; i<num_processes; i++){
+							record_c[i] = 1;
+						}
+						record_snapshot(num,YES);
+						num_snapshots--;
+					}
+					else /*if(from != 0)*/{ //Keep recording channels
+						record_snapshot(num,NO);
+						record_c[from] = 0;					
+					}
+				}
+				else { //Process 0 updates
+					record_c[from] = 0;
+
+					//If all processes took a snapshot
+					int snapshot_complete = 1;
+					int i;
+					for (i=0; i<num_processes; i++){
+						if(record_c[i] == 1)
+							snapshot_complete = 0;
+					}
+					if (snapshot_complete == 1)
+						num_snapshots--;				
+				}
 			}
 			else{
 				//Put message into channel to process
 				int from = buf[0] -1;
 				pthread_mutex_lock(&channel_mutex);
 				memcpy(channel[from], buf, max_buf_len);
+				c_recorded[from] = NO;
 				pthread_mutex_unlock(&channel_mutex);
 				
 				//Create a thread to process message when ready
@@ -222,14 +286,17 @@ void *write_messages ()
 		money -= m;
 		lamport++;
 
+		pthread_mutex_lock(&talk_mutex);
 		struct addrinfo *p;
-   		int talkfd = set_up_talk(PORT+sendto, &p);
+  		int talkfd = set_up_talk(PORT+sendto, &p);
 		if(talkfd != -1){
    	    	udp_send(talkfd, message, p);
     	}
     	else{
-     	   printf("bad talkfd\n");
+     		printf("bad talkfd\n");
     	}
+		close(talkfd);
+		pthread_mutex_unlock(&talk_mutex);
 
         print_status(1, w, m, sendto);
         unlock();
@@ -303,9 +370,11 @@ int main (int argc, const char* argv[])
 		//Messages are processed faster than they are sent, so only need
 		//1 message receiving channel per process
 	channel = (char **)malloc(num_processes * sizeof(char *));
+	c_recorded = (int *)malloc(num_processes * sizeof(int));
 	for( i=0; i<num_processes; i++ ){
 		channel[i] = (char *)malloc(max_buf_len * sizeof(char));
 		channel[i][0] = '\0';
+		c_recorded[i] = NO;
 	}
 
 	//Create Processes and Run Program
